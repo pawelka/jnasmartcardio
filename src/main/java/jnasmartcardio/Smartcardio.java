@@ -681,10 +681,22 @@ public class Smartcardio extends Provider {
     private final JnaCard card;
     private final int channel;
     private boolean isClosed;
+    private final boolean getResponse;
+    private final boolean rawCla;
 
     public JnaCardChannel(JnaCard card, int channel) {
       this.card = card;
       this.channel = channel;
+      // implement compatibility with SUN properties
+      boolean getResponseVal = true;
+      if (card.protocol == JnaCardTerminal.SCARD_PROTOCOL_T0 && !"true".equals(System.getProperty("sun.security.smartcardio.t0GetResponse"))) {
+          getResponseVal = false;
+      } else if (card.protocol == JnaCardTerminal.SCARD_PROTOCOL_T1 && !"true".equals(System.getProperty("sun.security.smartcardio.t1GetResponse"))) {
+          getResponseVal = false;
+      }
+      getResponse = getResponseVal;
+      rawCla = "true".equals(System.getProperty("jnasmartcardio.smartcardio.rawCLA"));
+
     }
 
     @Override
@@ -851,24 +863,17 @@ public class Smartcardio extends Provider {
       if (card.protocol == JnaCardTerminal.SCARD_PROTOCOL_T0 && isExtendedApdu(command))
         throw new CardException("Extended APDU requires T=1");
 
-      command[0] = getClassByte(command[0], getChannelNumber());
+      if(!rawCla) {
+        command[0] = getClassByte(command[0], getChannelNumber());
+      }
+
       ByteBuffer commandBuffer = ByteBuffer.wrap(command);
 
       // Allocate memory if not given: 8K
       if (response == null)
         response = ByteBuffer.allocate(8192);
 
-      // TODO: implement compatibility with SUN properties
-      boolean getResponse = true;
-      if (card.protocol == JnaCardTerminal.SCARD_PROTOCOL_T0) {
-        if (!"true".equals(System.getProperty("sun.security.smartcardio.t0GetResponse"))) {
-          getResponse = false;
-        }
-      } else if (card.protocol == JnaCardTerminal.SCARD_PROTOCOL_T1) {
-        if (!"true".equals(System.getProperty("sun.security.smartcardio.t1GetResponse"))) {
-          getResponse = false;
-        }
-      }
+
       // Don't loop forever.
       for (int i = 0; i < 8; i++) {
         int posBeforeTransmit = response.position();
